@@ -44,8 +44,8 @@ container copies Kustomize shipped with Argo CD into the shared `var-files` volu
 mounts that binary at `/usr/local/bin/kustomize`. The example also mounts a Secret key as
 `ksub-globals.yaml`, making the source alias `ksub-globals` available to Applications.
 
-Add the following to the chart's values, replacing the sidecar image and substitution Secret with
-values appropriate for your cluster:
+Add the following to the chart's values, replacing the substitution Secret with a value appropriate
+for your cluster:
 
 ```yaml
 repoServer:
@@ -73,7 +73,7 @@ repoServer:
 
   extraContainers:
     - name: cmp-ksubstitute
-      image: registry.example.com/ksubstitute:latest
+      image: ghcr.io/arilence/argocd-ksubstitute:latest
       command:
         - /var/run/argocd/argocd-cmp-server
       env:
