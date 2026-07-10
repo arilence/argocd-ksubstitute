@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
+metadata:
+  name: ksubstitute
+spec:
+  generate:
+    args:
+    - render
+    - --values-root=/.config/ksubstitute-vars
+    - .
+    command:
+    - /bin/ksubstitute
+  parameters:
+    static:
+    - array: []
+      collectionType: array
+      name: substitute-from
+      required: true
+      title: Mounted substitution sources
+  preserveFileMode: false
+  provideGitCreds: false
+  version: v1

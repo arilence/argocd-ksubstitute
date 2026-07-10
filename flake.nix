@@ -14,78 +14,94 @@
       flake-utils,
       gomod2nix,
     }:
-    (flake-utils.lib.eachDefaultSystem (
+    flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
         callPackage = pkgs.callPackage;
-        # Simple test check added to nix flake check
-        go-test = pkgs.stdenvNoCC.mkDerivation {
-          name = "ksubstitute";
-          dontBuild = true;
-          src = ./.;
-          doCheck = true;
-          nativeBuildInputs = with pkgs; [
-            go
-            writableTmpDirAsHomeHook
-          ];
-          checkPhase = ''
-            go test -v ./...
-          '';
-          installPhase = ''
-            mkdir "$out"
-          '';
+
+        gomod2nixPkgs = gomod2nix.legacyPackages.${system};
+
+        ksubstituteApp = callPackage ./. {
+          inherit (gomod2nixPkgs) buildGoApplication;
         };
-        # Simple lint check added to nix flake check
+
+        cmpConfig = pkgs.runCommand "ksubstitute-cmp-config" { } ''
+          install -Dm444 ${./config.yaml} \
+            $out/home/argocd/cmp-server/config/plugin.yaml
+        '';
+
+        # Lint check that reuses gomod2nix's vendor setup.
         go-lint = pkgs.stdenvNoCC.mkDerivation {
           name = "go-lint";
-          dontBuild = true;
           src = ./.;
+
+          dontBuild = true;
           doCheck = true;
-          nativeBuildInputs = with pkgs; [
-            golangci-lint
-            go
-            writableTmpDirAsHomeHook
+
+          nativeBuildInputs = [
+            pkgs.golangci-lint
+            ksubstituteApp.passthru.go
+            pkgs.writableTmpDirAsHomeHook
+
+            # This is the important bit: reuse gomod2nix's hook.
+            ksubstituteApp.passthru.hooks.goConfigHook
           ];
+
+          # This is also important: point the hook at the vendor env
+          # generated from gomod2nix.toml.
+          goVendorDir = ksubstituteApp.passthru.vendorEnv;
+
           checkPhase = ''
-            golangci-lint run
+            runHook preCheck
+
+            export GOLANGCI_LINT_CACHE="$TMPDIR/golangci-lint-cache"
+            golangci-lint run ./...
+
+            runHook postCheck
           '';
+
           installPhase = ''
-            mkdir "$out"
+            mkdir -p "$out"
           '';
         };
-        ksubstituteApp = callPackage ./. {
-          inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
-        };
-        # Build container layered image, useful overtime to save storage on duplicated layers
+
         containerImage = pkgs.dockerTools.buildLayeredImage {
           name = "ksubstitute";
           tag = "latest";
-          # Using the value "now" breaks reproducibility.
-          # created = "now";
+
           contents = [
+            # Uncomment if you want a usable shell inside the container
+            # pkgs.busybox
             pkgs.cacert
             pkgs.openssl
+            ksubstituteApp
+            cmpConfig
           ];
+
           config = {
-            Cmd = [ "${ksubstituteApp}/bin/ksubstitute" ];
+            Cmd = [ "/bin/ksubstitute" ];
           };
         };
       in
       {
         checks = {
-          inherit go-test go-lint;
+          # This builds the app and runs its Go tests via gomod2nix.
+          ksubstitute = ksubstituteApp;
+
+          # This lints with gomod2nix's vendored deps available.
+          inherit go-lint;
         };
+
         packages = {
           default = ksubstituteApp;
           inherit containerImage;
         };
+
         devShells.default = callPackage ./shell.nix {
-          inherit (gomod2nix.legacyPackages.${system}) mkGoEnv gomod2nix;
+          inherit (gomod2nixPkgs) mkGoEnv gomod2nix;
         };
-        # Custom application to build and load container image into the docker daemon
-        # For now docker is a requirement
+
         apps.build-and-load = {
           type = "app";
           program = "${pkgs.writeShellScriptBin "build-and-load" ''
@@ -96,5 +112,5 @@
           meta.description = "Build and load the container image into Docker";
         };
       }
-    ));
+    );
 }
