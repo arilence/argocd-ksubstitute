@@ -5,6 +5,9 @@ Flux CD's post-build variable substitution. Enables the use of `${VAR_NAME}` ins
 applications, replacing `${VAR_NAME}` with the value associated with the `VAR_NAME` key in a Secret
 manifest.
 
+> **AI use disclaimer:** This project is a proof of concept, primarily made via LLMs. I would not
+> use this in production.
+
 ## Prerequisites
 
 - [Nix](https://nixos.org/download/) with the `nix-command` and `flakes`
